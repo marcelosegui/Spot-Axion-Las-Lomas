@@ -52,6 +52,33 @@
   #qr-holder-oculto { position: absolute; left: -9999px; top: -9999px; }
   #qr-resultado { display: flex; justify-content: center; margin: 12px 0; }
   #qr-resultado canvas { border-radius: 10px; border: 1px solid #e4e4e7; }
+  html { scroll-behavior: smooth; }
+  .filtro-categorias {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 16px;
+    background: #fff;
+    border-bottom: 1px solid #f4f4f5;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    -webkit-overflow-scrolling: touch;
+  }
+  .filtro-categorias::-webkit-scrollbar { display: none; }
+  .filtro-chip {
+    flex-shrink: 0;
+    border: 1px solid #e4e4e7;
+    background: #f4f4f5;
+    color: #3f3f46;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .categoria { scroll-margin-top: 56px; }
 </style>
 </head>
 <body>
@@ -133,21 +160,31 @@
 
   function renderCliente() {
     const disponibles = items.filter(i => i.disponible !== false);
+    const catsDisponibles = [...new Set(disponibles.map(i => i.categoria || 'Otros'))];
+
+    function slug(texto) {
+      return 'cat-' + texto.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    }
+
     let html = `
       <div class="contenedor">
         <div class="header">
           ${config.logo ? `<img src="${config.logo}">` : ''}
           <h1>${escapeHtml(config.nombre)}</h1>
         </div>
+        ${catsDisponibles.length > 1 ? `
+          <div class="filtro-categorias">
+            ${catsDisponibles.map(cat => `<a href="#${slug(cat)}" class="filtro-chip">${escapeHtml(cat)}</a>`).join('')}
+          </div>
+        ` : ''}
         <div class="main">
     `;
     if (disponibles.length === 0) {
       html += `<div class="vacio">Todavía no hay platos cargados en el menú.</div>`;
     } else {
-      const cats = [...new Set(disponibles.map(i => i.categoria || 'Otros'))];
-      cats.forEach(cat => {
+      catsDisponibles.forEach(cat => {
         const platos = disponibles.filter(i => (i.categoria || 'Otros') === cat);
-        html += `<div class="categoria"><h2>${escapeHtml(cat)}</h2>`;
+        html += `<div class="categoria" id="${slug(cat)}"><h2>${escapeHtml(cat)}</h2>`;
         platos.forEach(p => {
           html += `
             <div class="plato">
