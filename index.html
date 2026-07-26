@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Menú Digital</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+
+<style>
+  :root { --color-principal: #e11d48; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    background: #fafafa;
+    color: #18181b;
+  }
+  .contenedor { max-width: 480px; margin: 0 auto; min-height: 100vh; background: white; }
+  .header { background: var(--color-principal); color: white; padding: 28px 20px; text-align: center; }
+  .header img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: white; margin-bottom: 8px; border: 3px solid rgba(255,255,255,0.5); }
+  .header h1 { margin: 0; font-size: 22px; }
+  .main { padding: 16px; padding-bottom: 60px; }
+  .categoria { margin-bottom: 22px; }
+  .categoria h2 { font-size: 16px; border-bottom: 2px solid #f4f4f5; padding-bottom: 6px; margin-bottom: 10px; }
+  .plato { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid #f4f4f5; }
+  .plato img { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: #f4f4f5; }
+  .plato-info { flex: 1; min-width: 0; }
+  .plato-nombre { font-weight: 600; display: flex; justify-content: space-between; gap: 8px;}
+  .plato-precio { font-weight: 700; white-space: nowrap; }
+  .plato-desc { font-size: 13px; color: #71717a; margin-top: 2px; }
+  .vacio { text-align: center; color: #a1a1aa; padding: 40px 20px; font-size: 14px; }
+  .tab-btn { border: none; background: transparent; padding: 6px 14px; border-radius: 20px; font-size: 13px; color: #71717a; cursor: pointer; }
+  .admin-box { background: white; border: 1px solid #e4e4e7; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+  .admin-box h3 { margin-top: 0; font-size: 15px; }
+  input, textarea { width: 100%; padding: 9px 10px; border: 1px solid #d4d4d8; border-radius: 8px; font-size: 14px; margin-bottom: 8px; font-family: inherit; }
+  label { font-size: 12px; color: #71717a; display:block; margin-bottom: 2px;}
+  button.btn { background: var(--color-principal); color: white; border: none; padding: 10px 14px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; width: 100%; }
+  button.btn.secundario { background: #e4e4e7; color: #18181b; }
+  button.btn.chico { width: auto; padding: 6px 10px; font-size: 12px; }
+  .fila-botones { display: flex; gap: 8px; }
+  .item-admin { display: flex; gap: 10px; align-items: center; border: 1px solid #e4e4e7; border-radius: 10px; padding: 8px; margin-bottom: 8px; }
+  .item-admin img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex-shrink:0; background:#f4f4f5;}
+  .item-admin .info { flex: 1; min-width: 0; font-size: 13px; }
+  .item-admin .acciones { display: flex; flex-direction: column; gap: 4px; }
+  .badge-agotado { background: #fee2e2; color: #b91c1c; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 4px;}
+  .login-box { max-width: 300px; margin: 60px auto; text-align: center; padding: 20px; }
+  .cargando { text-align: center; padding: 60px 20px; color: #a1a1aa; }
+  .aviso { font-size: 12px; color: #71717a; background: #f4f4f5; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<div id="root"><div class="cargando">Cargando menú...</div></div>
+
+<script>
+  // ======= CONFIGURACIÓN DE FIREBASE (tu proyecto) =======
+  const firebaseConfig = {
+    apiKey: "AIzaSyAPTFaMB63gx6qm8m7LQN9c5xbCZ0cvQQ",
+    authDomain: "spot-axion-las-lomas.firebaseapp.com",
+    projectId: "spot-axion-las-lomas",
+    storageBucket: "spot-axion-las-lomas.firebasestorage.app",
+    messagingSenderId: "18029059950",
+    appId: "1:18029059950:web:c36fe7ccf3a8b4a24beb7f"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const CONFIG_DEFAULT = { nombre: 'Mi Restaurante', logo: null, color: '#e11d48', pin: '1234' };
+  let config = { ...CONFIG_DEFAULT };
+  let items = [];
+  let vista = (window.location.hash === '#admin') ? 'login' : 'cliente';
+  let editandoId = null;
+
+  const root = document.getElementById('root');
+
+  async function cargarDatos() {
+    try {
+      const doc = await db.collection('config').doc('restaurante').get();
+      if (doc.exists) config = { ...CONFIG_DEFAULT, ...doc.data() };
+    } catch (e) { console.error(e); }
+
+    try {
+      const snap = await db.collection('menuItems').orderBy('creado', 'asc').get();
+      items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { console.error(e); items = []; }
+
+    render();
+  }
+
+  async function guardarConfig() {
+    document.documentElement.style.setProperty('--color-principal', config.color);
+    await db.collection('config').doc('restaurante').set(config);
+  }
+
+  function comprimirImagen(file, maxSize) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let w = img.width, h = img.height;
+          if (w > h && w > maxSize) { h = h * (maxSize / w); w = maxSize; }
+          else if (h > maxSize) { w = w * (maxSize / h); h = maxSize; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.6));
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.innerText = str || '';
+    return d.innerHTML;
+  }
+
+  function render() {
+    document.documentElement.style.setProperty('--color-principal', config.color || '#e11d48');
+    if (vista === 'cliente') renderCliente();
+    else if (vista === 'login') renderLogin();
+    else renderAdmin();
+  }
+
+  function renderCliente() {
+    const disponibles = items.filter(i => i.disponible !== false);
+    let html = `
+      <div class="contenedor">
+        <div class="header">
+          ${config.logo ? `<img src="${config.logo}">` : ''}
+          <h1>${escapeHtml(config.nombre)}</h1>
+        </div>
+        <div class="main">
+    `;
+    if (disponibles.length === 0) {
+      html += `<div class="vacio">Todavía no hay platos cargados en el menú.</div>`;
+    } else {
+      const cats = [...new Set(disponibles.map(i => i.categoria || 'Otros'))];
+      cats.forEach(cat => {
+        const platos = disponibles.filter(i => (i.categoria || 'Otros') === cat);
+        html += `<div class="categoria"><h2>${escapeHtml(cat)}</h2>`;
+        platos.forEach(p => {
+          html += `
+            <div class="plato">
+              ${p.foto ? `<img src="${p.foto}">` : ''}
+              <div class="plato-info">
+                <div class="plato-nombre">
+                  <span>${escapeHtml(p.nombre)}</span>
+                  <span class="plato-precio">$${Number(p.precio || 0).toLocaleString('es-AR')}</span>
+                </div>
+                ${p.descripcion ? `<div class="plato-desc">${escapeHtml(p.descripcion)}</div>` : ''}
+              </div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+      });
+    }
+    html += `
+        </div>
+        <div style="text-align:center; padding: 10px;">
+          <button class="tab-btn" onclick="window.__irLogin()">Administrar menú</button>
+        </div>
+      </div>
+    `;
+    root.innerHTML = html;
+    window.__irLogin = () => { window.location.hash = 'admin'; vista = 'login'; render(); };
+  }
+
+  function renderLogin() {
+    root.innerHTML = `
+      <div class="login-box">
+        <h3>Acceso administrador</h3>
+        <p style="font-size:13px;color:#71717a;">Ingresá el PIN para editar el menú.</p>
+        <input type="password" id="pin-input" placeholder="PIN" inputmode="numeric">
+        <button class="btn" onclick="window.__intentarLogin()">Entrar</button>
+        <div style="margin-top:10px;">
+          <button class="tab-btn" onclick="window.__volverCliente()">Volver al menú</button>
+        </div>
+        <p style="font-size:11px;color:#a1a1aa;margin-top:16px;">PIN por defecto: 1234</p>
+      </div>
+    `;
+    window.__intentarLogin = () => {
+      const val = document.getElementById('pin-input').value;
+      if (val === (config.pin || '1234')) { vista = 'admin'; render(); }
+      else alert('PIN incorrecto');
+    };
+    window.__volverCliente = () => { window.location.hash = ''; vista = 'cliente'; render(); };
+  }
+
+  function getItem(id) { return items.find(i => i.id === id); }
+
+  function renderAdmin() {
+    let html = `
+      <div class="contenedor">
+        <div class="header" style="padding:16px 20px;">
+          <h1 style="font-size:18px;">Panel de administración</h1>
+        </div>
+        <div class="main">
+          <div class="admin-box">
+            <h3>Datos del restaurante</h3>
+            <label>Nombre</label>
+            <input id="f-nombre" value="${escapeHtml(config.nombre)}">
+            <label>Color principal</label>
+            <input id="f-color" type="color" value="${config.color}" style="height:40px;padding:2px;">
+            <label>Logo</label>
+            <input id="f-logo" type="file" accept="image/*">
+            ${config.logo ? `<img src="${config.logo}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:8px;">` : ''}
+            <label>Cambiar PIN de acceso</label>
+            <input id="f-pin" value="${escapeHtml(config.pin || '1234')}">
+            <button class="btn" onclick="window.__guardarConfigForm()">Guardar datos</button>
+          </div>
+
+          <div class="admin-box">
+            <h3>${editandoId ? 'Editar plato' : 'Agregar plato'}</h3>
+            <label>Nombre del plato</label>
+            <input id="p-nombre" value="${editandoId ? escapeHtml(getItem(editandoId).nombre) : ''}">
+            <label>Categoría</label>
+            <input id="p-categoria" placeholder="Ej: Entradas" value="${editandoId ? escapeHtml(getItem(editandoId).categoria || '') : ''}">
+            <label>Descripción</label>
+            <textarea id="p-descripcion" rows="2">${editandoId ? escapeHtml(getItem(editandoId).descripcion || '') : ''}</textarea>
+            <label>Precio</label>
+            <input id="p-precio" type="number" step="0.01" value="${editandoId ? getItem(editandoId).precio : ''}">
+            <label>Foto</label>
+            <input id="p-foto" type="file" accept="image/*">
+            <label style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="p-disponible" style="width:auto;" ${editandoId ? (getItem(editandoId).disponible !== false ? 'checked' : '') : 'checked'}>
+              Disponible
+            </label>
+            <div class="fila-botones">
+              <button class="btn" onclick="window.__guardarPlato()">${editandoId ? 'Guardar cambios' : 'Agregar plato'}</button>
+              ${editandoId ? `<button class="btn secundario" onclick="window.__cancelarEdicion()">Cancelar</button>` : ''}
+            </div>
+          </div>
+
+          <div class="admin-box">
+            <h3>Platos cargados (${items.length})</h3>
+            ${items.length === 0 ? '<p style="font-size:13px;color:#a1a1aa;">Todavía no cargaste platos.</p>' : ''}
+            ${items.map(p => `
+              <div class="item-admin">
+                ${p.foto ? `<img src="${p.foto}">` : ''}
+                <div class="info">
+                  <strong>${escapeHtml(p.nombre)}</strong> ${p.disponible === false ? '<span class="badge-agotado">Agotado</span>' : ''}<br>
+                  <span style="color:#71717a;">${escapeHtml(p.categoria || 'Otros')} · $${Number(p.precio||0).toLocaleString('es-AR')}</span>
+                </div>
+                <div class="acciones">
+                  <button class="btn chico secundario" onclick="window.__editarPlato('${p.id}')">Editar</button>
+                  <button class="btn chico secundario" onclick="window.__borrarPlato('${p.id}')">Borrar</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <button class="tab-btn" onclick="window.__volverCliente2()">Ver menú público</button>
+        </div>
+      </div>
+    `;
+    root.innerHTML = html;
+
+    window.__volverCliente2 = () => { window.location.hash = ''; vista = 'cliente'; render(); };
+
+    window.__guardarConfigForm = async () => {
+      config.nombre = document.getElementById('f-nombre').value || 'Mi Restaurante';
+      config.color = document.getElementById('f-color').value || '#e11d48';
+      config.pin = document.getElementById('f-pin').value || '1234';
+      const fileInput = document.getElementById('f-logo');
+      if (fileInput.files && fileInput.files[0]) {
+        config.logo = await comprimirImagen(fileInput.files[0], 300);
+      }
+      await guardarConfig();
+      render();
+    };
+
+    window.__guardarPlato = async () => {
+      const nombre = document.getElementById('p-nombre').value.trim();
+      const precio = parseFloat(document.getElementById('p-precio').value || '0');
+      if (!nombre) { alert('Poné un nombre para el plato'); return; }
+      const categoria = document.getElementById('p-categoria').value.trim() || 'Otros';
+      const descripcion = document.getElementById('p-descripcion').value.trim();
+      const disponible = document.getElementById('p-disponible').checked;
+      const fileInput = document.getElementById('p-foto');
+      let foto = editandoId ? getItem(editandoId).foto : null;
+      if (fileInput.files && fileInput.files[0]) {
+        foto = await comprimirImagen(fileInput.files[0], 400);
+      }
+
+      if (editandoId) {
+        await db.collection('menuItems').doc(editandoId).update({ nombre, categoria, descripcion, precio, disponible, foto: foto || null });
+      } else {
+        await db.collection('menuItems').add({ nombre, categoria, descripcion, precio, disponible, foto: foto || null, creado: Date.now() });
+      }
+      editandoId = null;
+      await cargarDatos();
+    };
+
+    window.__editarPlato = (id) => { editandoId = id; render(); };
+    window.__cancelarEdicion = () => { editandoId = null; render(); };
+    window.__borrarPlato = async (id) => {
+      if (!confirm('¿Borrar este plato?')) return;
+      await db.collection('menuItems').doc(id).delete();
+      await cargarDatos();
+    };
+  }
+
+  cargarDatos();
+</script>
+</body>
+</html>
