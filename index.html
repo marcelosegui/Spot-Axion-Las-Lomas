@@ -7,6 +7,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
   :root { --color-principal: #e11d48; }
@@ -48,6 +49,9 @@
   .login-box { max-width: 300px; margin: 60px auto; text-align: center; padding: 20px; }
   .cargando { text-align: center; padding: 60px 20px; color: #a1a1aa; }
   .aviso { font-size: 12px; color: #71717a; background: #f4f4f5; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+  #qr-holder-oculto { position: absolute; left: -9999px; top: -9999px; }
+  #qr-resultado { display: flex; justify-content: center; margin: 12px 0; }
+  #qr-resultado canvas { border-radius: 10px; border: 1px solid #e4e4e7; }
 </style>
 </head>
 <body>
@@ -256,6 +260,17 @@
             `).join('')}
           </div>
 
+          <div class="admin-box">
+            <h3>QR para las mesas</h3>
+            <p style="font-size:13px;color:#71717a;">
+              Genera el QR con tu logo en el centro. Apunta siempre a este mismo link (sin #admin), así que imprimís uno solo para todas las mesas.
+            </p>
+            <button class="btn secundario" onclick="window.__generarQRConLogo()">Generar QR con logo</button>
+            <div id="qr-resultado"></div>
+            <div id="qr-holder-oculto"></div>
+            <div id="qr-download-holder"></div>
+          </div>
+
           <button class="tab-btn" onclick="window.__volverCliente2()">Ver menú público</button>
         </div>
       </div>
@@ -304,6 +319,69 @@
       if (!confirm('¿Borrar este plato?')) return;
       await db.collection('menuItems').doc(id).delete();
       await cargarDatos();
+    };
+
+    window.__generarQRConLogo = () => {
+      const linkLimpio = window.location.origin + window.location.pathname;
+      const holderOculto = document.getElementById('qr-holder-oculto');
+      holderOculto.innerHTML = '';
+
+      // Alta corrección de errores (H) para que tolere el logo tapando el centro
+      new QRCode(holderOculto, {
+        text: linkLimpio,
+        width: 500,
+        height: 500,
+        correctLevel: QRCode.CorrectLevel.H
+      });
+
+      setTimeout(() => {
+        const qrImg = holderOculto.querySelector('img') || holderOculto.querySelector('canvas');
+        const size = 500;
+        const canvasFinal = document.createElement('canvas');
+        canvasFinal.width = size;
+        canvasFinal.height = size;
+        const ctx = canvasFinal.getContext('2d');
+
+        // Dibujar el QR base
+        const qrSrc = qrImg.tagName === 'CANVAS' ? qrImg : qrImg;
+        ctx.drawImage(qrImg, 0, 0, size, size);
+
+        const dibujarResultado = () => {
+          document.getElementById('qr-resultado').innerHTML = '';
+          document.getElementById('qr-resultado').appendChild(canvasFinal);
+          const dataUrl = canvasFinal.toDataURL('image/png');
+          document.getElementById('qr-download-holder').innerHTML =
+            `<a class="btn" style="display:block;text-align:center;text-decoration:none;margin-top:8px;" href="${dataUrl}" download="qr-menu-con-logo.png">Descargar QR (PNG)</a>`;
+        };
+
+        if (config.logo) {
+          const logoImg = new Image();
+          logoImg.onload = () => {
+            const logoSize = size * 0.22; // el logo ocupa ~22% del ancho, para no romper la lectura
+            const cx = (size - logoSize) / 2;
+            const cy = (size - logoSize) / 2;
+            const padding = size * 0.02;
+
+            // Fondo blanco redondeado detrás del logo, para que el QR se lea bien
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.roundRect(cx - padding, cy - padding, logoSize + padding * 2, logoSize + padding * 2, 12);
+            ctx.fill();
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, logoSize/2, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.drawImage(logoImg, cx, cy, logoSize, logoSize);
+            ctx.restore();
+
+            dibujarResultado();
+          };
+          logoImg.src = config.logo;
+        } else {
+          dibujarResultado();
+        }
+      }, 300);
     };
   }
 
